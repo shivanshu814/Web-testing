@@ -1,11 +1,57 @@
 import { spawn } from "child_process";
 import { exec } from "child_process";
 import { promisify } from "util";
+import * as path from "path";
+import * as os from "os";
 
 const execAsync = promisify(exec);
 
 export class BrowserController {
   private browserProcesses: Map<string, any> = new Map();
+
+  private getChromePath(): string {
+    const possiblePaths = [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+      path.join(
+        os.homedir(),
+        "AppData",
+        "Local",
+        "Google",
+        "Chrome",
+        "Application",
+        "chrome.exe"
+      ),
+    ];
+
+    for (const chromePath of possiblePaths) {
+      if (require("fs").existsSync(chromePath)) {
+        return chromePath;
+      }
+    }
+    throw new Error("Chrome executable not found");
+  }
+
+  private getFirefoxPath(): string {
+    const possiblePaths = [
+      "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+      "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe",
+      path.join(
+        os.homedir(),
+        "AppData",
+        "Local",
+        "Mozilla Firefox",
+        "firefox.exe"
+      ),
+    ];
+
+    for (const firefoxPath of possiblePaths) {
+      if (require("fs").existsSync(firefoxPath)) {
+        return firefoxPath;
+      }
+    }
+    throw new Error("Firefox executable not found");
+  }
 
   async startBrowser(browser: string, url: string): Promise<void> {
     if (this.browserProcesses.has(browser)) {
@@ -16,10 +62,10 @@ export class BrowserController {
     let args: string[];
 
     if (browser === "chrome") {
-      command = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+      command = this.getChromePath();
       args = ["--new-window", url];
     } else if (browser === "firefox") {
-      command = "/Applications/Firefox.app/Contents/MacOS/firefox";
+      command = this.getFirefoxPath();
       args = ["-new-window", url];
     } else {
       throw new Error("Unsupported browser");
@@ -53,12 +99,12 @@ export class BrowserController {
     try {
       if (browser === "chrome") {
         const { stdout } = await execAsync(
-          "osascript -e 'tell application \"Google Chrome\" to get URL of active tab of front window'"
+          'powershell -command "Get-Process chrome | Select-Object -First 1 | ForEach-Object { $_.MainWindowTitle }"'
         );
         return stdout.trim();
       } else if (browser === "firefox") {
         const { stdout } = await execAsync(
-          "osascript -e 'tell application \"Firefox\" to get URL of active tab of front window'"
+          'powershell -command "Get-Process firefox | Select-Object -First 1 | ForEach-Object { $_.MainWindowTitle }"'
         );
         return stdout.trim();
       }
@@ -75,13 +121,26 @@ export class BrowserController {
 
     try {
       if (browser === "chrome") {
-        await execAsync(
-          "rm -rf ~/Library/Application\\ Support/Google/Chrome/Default/*"
+        const chromeProfilePath = path.join(
+          os.homedir(),
+          "AppData",
+          "Local",
+          "Google",
+          "Chrome",
+          "User Data",
+          "Default"
         );
+        await execAsync(`rmdir /s /q "${chromeProfilePath}"`);
       } else if (browser === "firefox") {
-        await execAsync(
-          "rm -rf ~/Library/Application\\ Support/Firefox/Profiles/*.default/*"
+        const firefoxProfilePath = path.join(
+          os.homedir(),
+          "AppData",
+          "Roaming",
+          "Mozilla",
+          "Firefox",
+          "Profiles"
         );
+        await execAsync(`rmdir /s /q "${firefoxProfilePath}"`);
       } else {
         throw new Error("Unsupported browser");
       }
